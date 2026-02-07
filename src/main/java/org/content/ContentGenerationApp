@@ -1,0 +1,73 @@
+package org.content;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.content.config.DataConfig;
+import org.content.evaluator.ExpressionEvaluator;
+import org.content.formatter.CurrencyFormatter;
+import org.content.formatter.DecimalFormatter;
+import org.content.formatter.ValueFormatter;
+import org.content.resolver.JsonPathValueResolver;
+import org.content.service.*;
+
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Executors;
+
+public class ContentGenerationApp {
+    public static void main(String[] args) throws Exception {
+        String basePath = "src/main/resources/";
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonLoader loader = new JsonLoader(mapper);
+        JsonMerger merger = new JsonMerger(mapper);
+        List<ValueFormatter> formatters = List.of(
+                new DecimalFormatter(),
+                new CurrencyFormatter()
+        );
+
+        ContextBuilder contextBuilder = new ContextBuilder(
+                new JsonPathValueResolver(),
+                new ExpressionEvaluator(),
+                formatters
+        );
+
+        TemplateEngine templateEngine = new HandlebarsTemplateEngine();
+
+        // Load JSONs in parallel
+        JsonNode mergedJson;
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var productFuture = executor.submit(() -> loader.load(Paths.get(basePath + "product.json")));
+            var supplierFuture = executor.submit(() -> loader.load(Paths.get(basePath + "supplier.json")));
+            var storeFuture = executor.submit(() -> loader.load(Paths.get(basePath + "store.json")));
+
+            mergedJson = merger.merge(Map.of(
+                    "product", productFuture.get(),
+                    "supplier", supplierFuture.get(),
+                    "store", storeFuture.get()
+            ));
+        }
+
+        System.out.println("Merged JSON:");
+        System.out.println(mergedJson.toPrettyString());
+
+        // Load data config
+        DataConfig dataConfig = mapper.readValue(
+                Paths.get(basePath + "data-config.json").toFile(),
+                DataConfig.class
+        );
+
+        // Load template
+        String templateJson = Files.readString(Paths.get(basePath + "template.hb"));
+
+        // Build context
+        var context = contextBuilder.build(dataConfig, mergedJson);
+
+        // Render template
+        String output = templateEngine.render(templateJson, context);
+        System.out.println("\nRendered Output:");
+        System.out.println(output);
+    }
+}
