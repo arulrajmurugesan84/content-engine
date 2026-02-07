@@ -1,0 +1,15 @@
+{
+  "id": "store_1",
+  "mailingAddress": {
+    "line1": "123 Main St",
+    "line2": "Suite 500"
+  },
+  "physicalAddress": {
+    "line1": "789 Market St",
+    "line2": "Floor 2"
+  },
+  "locations": [
+    { "city": "New York", "zip": "10001" },
+    { "city": "Chicago" }
+  ]
+}
